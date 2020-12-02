@@ -144,4 +144,15 @@ corrplot(corrLinear_cd$r, method = "circle",tl.col = "blue")
 
 
 ```
+```{r regression example, include=FALSE}
+
+LR_infant_Mortality<-lm(infant_mortality ~  year + infant_mortality_male + infant_mortality_female + life_expectancy + 
+                          life_expectancy_male + life_expectancy_female +  total_fertility_rate + sex_ratio_at_birth+     
+                          crude_birth_rate + crude_death_rate + net_migration + rate_natural_increase + growth_rate +
+                          starting_age + ending_age + midyear_population + midyear_population_male + midyear_population_female + GDP,
+                        data=CensusGDPdata)
+summary(LR_infant_Mortality)
+```
+
+
 
