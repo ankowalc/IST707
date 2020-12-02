@@ -1,0 +1,147 @@
+---
+title: "Group 14 IST 707 Final Project"
+author: "Aminata, Bruno, Andy"
+date: "December 5th, 2020"
+output: html_notebook
+---
+
+# Final Project title..
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# add libraries as needed
+library(tidyverse)
+library(Hmisc)
+library(corrplot)
+library(caret)
+#library(klaR)
+#library(pROC)
+
+
+```
+
+
+
+# Section 1: Data Preparation
+Importing our two data sets
+
+
+Okay THis first one I'm just making the Census Data 
+```{r Loading in the Data, include=FALSE}
+# First we load in multiple data sets from our census data dataset and combine them
+
+mortality_life_expectancy <- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/mortality_life_expectancy.csv")
+midyear_population_age_sex <- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/midyear_population_age_sex.csv") # we can probaby exclude this one
+#midyear_population_age_country_code <- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/midyear_population_age_country_code.csv") # giant and not needed
+age_specific_fertility_rates <- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/age_specific_fertility_rates.csv")
+birth_death_growth_rates <- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/birth_death_growth_rates.csv")
+#country_names_area <- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/country_names_area.csv") # redundant unnneeded dataset
+midyear_population_5yr_age_sex <- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/midyear_population_5yr_age_sex.csv")
+midyear_population <- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/midyear_population.csv")
+
+# combining dataframe with dplyr
+# two dataframes  one merged by c('country_code','country_name','year')  & one merged by c('country_code','country_name','year','sex')
+# Combing for all data except the giant dataframe of midyear_population_age_country_code
+# inner_join will enure matching b/w the DFs
+# could probably do as a fn but I will just repeat the steps for each DF
+
+CensusData <- inner_join(mortality_life_expectancy,age_specific_fertility_rates,by=c('country_code','country_name','year'))
+CensusData <- inner_join(CensusData,birth_death_growth_rates,by=c('country_code','country_name','year'))
+CensusData <- inner_join(CensusData,midyear_population_5yr_age_sex,by=c('country_code','country_name','year'))
+dim(CensusData)
+```
+
+
+Here I am just making the GDP Data
+```{r Loading in the GDP Data, include=FALSE}
+
+GDPData<- read_csv("~/Documents/Classes/Fall 2020/IST 707/Final Project/archive/annualGDPdata.csv") # reading in our GDP Data to supplement our Census Data
+
+
+GDPData$year<-GDPData$X1
+# There are non country columns to remove
+GDPData <- subset(GDPData, select = -c(X1,`Developing Asia`,`Developing Countries`,`East Asia & Pacific developing`,`Europe & Central Asia developing`,`High Income Countries`,
+                                       `High income: OECD`,`Latin America & Caribbean developing`,`Low-Income Countries (LIC)`,`Middle-Income Countries (MIC)`,
+                                       `Middle East & N. Africa developing`,`High Income: Non-OECD`,`South Asia developing`,`Sub-Saharan Africa developing`,`World (WBG members)`))
+
+# we have to remane some of the countrie columns to match the census data naming convention
+# change `Hong Kong SAR, China` to Hong Kong
+GDPData$`Hong Kong`<-GDPData$`Hong Kong SAR, China`
+# change iran to Iran
+GDPData$`Iran`<-GDPData$`Iran, Islamic Rep.`
+# change to Russia
+GDPData$`Russia`<-GDPData$`Russian Federation`
+# change to Taiwain
+GDPData$`Taiwan`<-GDPData$`Taiwan, China`
+
+# removing old country Cols
+GDPData <- subset(GDPData, select = -c(`Hong Kong SAR, China`,`Iran, Islamic Rep.`,`Russian Federation`,`Taiwan, China`))
+
+
+
+# using gather from tidyr to reshape the data columns into rows
+GDPData<- GDPData %>% gather(country_name, GDP, -year) # Specifying that a new Column for country_name, and GDP be gathered, exluding year which will remain as is to be gathered around
+# now a long DF with 3 columns: year, country_code, and GDP.   ready to munge/combine with Census Data
+
+
+# Looking at ten years of Data
+# 2009 to 2018 only complete data years
+GDPData<-subset(GDPData, year > 2009 & year < 2018) # subsetting to a ten year span of available data
+
+
+
+
+```
+
+
+Here I am combining them 
+```{r Combining GDP and Census Data, include=FALSE}
+
+
+# now to join the two dataframes
+CensusGDPdata<-subset(CensusData, year > 2009 & year < 2018) # trimming Census data to match GDP Data
+CensusGDPdata <- inner_join(CensusGDPdata,GDPData,by=c('country_name','year')) # joining economic data to the census data
+sum(is.na(CensusGDPdata)) # is zero
+#View(CensusGDPdata)
+lapply(CensusGDPdata, class)
+
+```
+
+
+Need to include corplot to show why they are redundant
+```{r dropping columns of no interest, echo=FALSE}
+# we are not interested in comparing fertilit rates across ages
+CensusGDPdata <- subset(CensusGDPdata, select = -c(mortality_rate_under5, mortality_rate_under5_male, mortality_rate_under5_female,mortality_rate_1to4,
+                                       mortality_rate_1to4_male,mortality_rate_1to4_female, fertility_rate_15_19, fertility_rate_20_24, 
+                                       fertility_rate_25_29, fertility_rate_30_34, fertility_rate_35_39, fertility_rate_40_44, fertility_rate_45_49))
+colnames(CensusGDPdata)
+dim(CensusGDPdata) # 25 columns
+
+CensusGDPdata <- subset(CensusGDPdata, select = -c(age_group_indicator, total_flag,gross_reproduction_rate)) # we are not interested in gross_repro rate or these two indicators
+dim(CensusGDPdata) # 22 columns
+```
+
+
+```{r scaling data, include=FALSE}
+ScaledCensusGDPdata<-CensusGDPdata 
+ScaledCensusGDPdata[,-c(1,2)]<-scale(ScaledCensusGDPdata[,-c(1,2)]) # Scales teh numeric Data
+
+```
+
+```{r corrplot, echo=FALSE}
+corrLinear_cd<-rcorr(as.matrix(ScaledCensusGDPdata %>% select(-country_code,-country_name)), type="spearman")
+corrLinear_cd$P[is.na(corrLinear_cd$P)]<-1
+
+corrplot(corrLinear_cd$r, method = "circle",tl.col = "blue")
+
+```
+
+
+```{r Creating categorical Variables, include=FALSE}
+
+
+```
+
